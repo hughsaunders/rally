@@ -1,0 +1,26 @@
+{
+  "deploy": {
+    "name": "DummyEngine",
+    "cloud_config": {
+      "identity": {
+        "url": "http://162.13.147.41/",
+        "uri": "http://162.13.147.41:5000/v2.0/",
+        "admin_username": "admin",
+        "admin_password": "f05d284dc158860dd5aa",
+        "admin_tenant_name": "demo"
+      }
+    }
+  },
+
+  "tests": {
+    "verify": [],
+    "benchmark": {
+      "NovaServers.boot_runcommand_delete_server": [
+        {"args": {"flavor_id": "2108eda8-101a-4b79-896d-420e7cba613a",
+                  "image_id": "c2c55b38-31ee-4283-83bb-b786e61fb801",
+                  "command": "sudo apt-get -fy install curl; curl -X POST -d \"hostname=$HOSTNAME\" http://requestb.in/17u886g1"},
+         "times": 2, "concurrent": 1}
+      ]
+    }
+  }
+}

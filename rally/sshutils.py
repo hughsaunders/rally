@@ -14,7 +14,9 @@
 #    under the License.
 
 import eventlet
+import paramiko
 import subprocess
+from StringIO import StringIO
 
 from rally import exceptions
 from rally.openstack.common.gettextutils import _  # noqa
@@ -27,6 +29,20 @@ LOG = logging.getLogger(__name__)
 
 class SSHException(Exception):
     pass
+
+def generate_ssh_keypair(key_size=2048):
+    priv_key = paramiko.RSAKey.generate(key_size)
+    priv_key_file = StringIO()
+    priv_key.write_private_key(file_obj=priv_key_file)
+    priv_key_file.seek(0)
+    priv_key_string = priv_key_file.read()
+    priv_key_file.seek(0)
+
+    pub_key = paramiko.RSAKey(file_obj=priv_key_file)
+    pub_key_string = "ssh-rsa %s" %(pub_key.get_base64(),)
+
+    return {'private': priv_key_string,
+            'public':  pub_key_string}
 
 
 def upload_file(user, host, source, destination):
@@ -50,6 +66,7 @@ def execute_command(user, host, cmd):
     (so, se) = pipe.communicate()
     if pipe.returncode:
         raise SSHException(se)
+
 
 
 class SSH(object):

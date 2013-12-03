@@ -25,6 +25,7 @@ from rally.benchmark import base
 from rally.openstack.common.gettextutils import _  # noqa
 from rally.openstack.common import log as logging
 from rally import osclients
+from rally import sshutils
 from rally import utils
 
 
@@ -49,14 +50,17 @@ def _run_scenario_loop(args):
 
     cls.idle_time = 0
 
+    scenario_specific_results = None
     try:
         with utils.Timer() as timer:
-            getattr(cls, method_name)(context, **kwargs)
+            scenario_specific_results = getattr(cls, method_name)(context,
+                    **kwargs)
     except Exception as e:
         return {"time": timer.duration() - cls.idle_time,
                 "idle_time": cls.idle_time, "error": _format_exc(e)}
     return {"time": timer.duration() - cls.idle_time,
-            "idle_time": cls.idle_time, "error": None}
+            "idle_time": cls.idle_time, "error": None,
+            "scenario_specific_results":scenario_specific_results}
 
     # NOTE(msdubov): Cleaning up after each scenario loop enables to delete
     #                the resources of the user the scenario was run from.
@@ -77,6 +81,41 @@ def _create_openstack_clients(users_endpoints, keys):
             ("cinder", cl.get_cinder_client())
         )) for cl in client_managers
     ]
+
+    return _prepare_for_instance_ssh(clients)
+
+
+def _prepare_for_instance_ssh(clients):
+    """Generate and store SSH keys, allow access to port 22.
+
+    In order to run tests on instances it is necessary to have SSH access.
+    This function generates an SSH key pair per user which is stored in the 
+    clients dictionary. The public key is also submitted to nova via the 
+    novaclient.
+
+    A security group rule is created to allow access to instances on port 22.
+    """
+
+
+    for client_dict in clients:
+        nova_client = client_dict['nova']
+
+        if ('rally_ssh_key' not in
+            [k.name for k in nova_client.keypairs.list()]):
+            client_dict['ssh_key_pair'] = sshutils.generate_ssh_keypair()
+            nova_client.keypairs.create(
+                'rally_ssh_key',client_dict['ssh_key_pair']['public'])
+
+        default_sec_group = nova_client.security_groups.find(name='default')
+        if not [rule for rule in default_sec_group.rules if 
+                rule['ip_protocol']=='tcp' 
+                and rule['to_port']==22
+                and rule['from_port']==22 
+                and rule['ip_range']=={'cidr':'0.0.0.0/0'}
+        ]:
+            nova_client.security_group_rules.create(
+                    default_sec_group.id, from_port=22, to_port=22,
+                    ip_protocol='tcp', cidr='0.0.0.0/0')
 
     return clients
 
@@ -107,10 +146,16 @@ class ScenarioRunner(object):
                                                              username,
                                                              tenant.id)
                 self.users.append(user)
-                user_credentials = {"username": username, "password": password,
-                                    "tenant_name": tenant.name,
-                                    "uri": self.endpoints["uri"]}
+                user_credentials = {
+                    "username": username,
+                    "password": password,
+                    "tenant_name": tenant.name,
+                    "uri": self.endpoints["uri"],
+                    "ssh_key_pair": sshutils.generate_ssh_keypair()
+                    }
                 temporary_endpoints.append(user_credentials)
+
+
         return temporary_endpoints
 
     def _delete_temp_tenants_and_users(self):

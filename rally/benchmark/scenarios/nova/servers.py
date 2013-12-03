@@ -13,12 +13,21 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
 import jsonschema
+import paramiko
 import random
+import socket
+from StringIO import StringIO
 
 from rally.benchmark.scenarios.nova import utils
 from rally.benchmark.scenarios import utils as scenario_utils
+from rally.benchmark import utils as benchmark_utils
 from rally import exceptions as rally_exceptions
+from rally.openstack.common.gettextutils import _  # noqa
+from rally.openstack.common import log as logging
+
+LOG = logging.getLogger(__name__)
 
 ACTION_BUILDER = scenario_utils.ActionBuilder(
         ['hard_reboot', 'soft_reboot', 'stop_start'])
@@ -35,6 +44,60 @@ class NovaServers(utils.NovaScenario):
         server = cls._boot_server(server_name, image_id, flavor_id, **kwargs)
         cls.sleep_between(min_sleep, max_sleep)
         cls._delete_server(server)
+
+    @classmethod
+    def boot_runcommand_delete_server(cls, context, image_id, flavor_id,
+                               command, network='private',
+                               username='ubuntu', ip_version=4, **kwargs):
+        """Boot server, run a command, delete server.
+        
+        Parameters:
+        command: Command to run on the server
+        network: Network to choose address to connect to instance from
+        username: User to SSH to instance as
+        ip_version: Version of ip protocol to use for connection
+        """
+        server_name = cls._generate_random_name(16)
+
+        server = cls._boot_server(server_name, image_id, flavor_id,
+            key_name='rally_ssh_key', **kwargs)
+
+        # NOTE(Hughsaunders): Run command specified by 'command' parameters
+        # within the instance. No output is captured so only the length of
+        # time taken to run is significant. Example uses: IO or CPU benchmark.
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        server_ip=[ip for ip in server.addresses[network] if
+                ip['version']==ip_version][0]['addr']
+        for retry in range(60):
+            try:
+                ssh.connect(
+                    hostname=server_ip,
+                    username=username,
+                    pkey=paramiko.RSAKey(
+                        file_obj=StringIO(cls.clients['ssh_key_pair']['private'])
+                    )
+                )
+                LOG.debug(_('Instance SSH connection succeded %s/%s Attempt:%i'
+                    % (server.id, server_ip, retry)))
+                stdin, stderr, stdout = ssh.exec_command(command)
+                stdout_str = stdout.read()
+                stderr_str = stderr.read()
+                LOG.debug(_('Instance SSH command completed %s/%s Attempt:%i'
+                    ' Stdout: %s, Stderr: %s' % (server.id, server_ip,
+                        retry, stdout_str, stderr_str)))
+                ssh.close()
+                break
+            except socket.error as e:
+                LOG.debug(_('Error running command on instance via SSH. %s/%s'
+                    ' Attempt:%i, Error: %s' % (server.id, server_ip, retry,
+                        benchmark_utils._format_exc(e))))
+                cls.sleep_between(5,5)
+
+        cls._delete_server(server)
+        print("stdout:,",stdout_str)
+        return {'data':stdout_str}
 
     @classmethod
     def boot_and_bounce_server(cls, context, image_id, flavor_id, **kwargs):

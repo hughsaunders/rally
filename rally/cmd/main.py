@@ -61,12 +61,16 @@ class TaskCommands(object):
         print(_("Task %(task_id)s is %(status)s.")
               % {'task_id': task_id, 'status': task['status']})
 
-    @cliutils.args('--task-id', type=str, dest='task_id', help='uuid of task')
+    @cliutils.args('--task-id', type=str, dest='task_id', help='uuid of task,'
+            ' if last is specified, details of the last task will be shown')
     def detailed(self, task_id):
         """Get detailed information about task
         :param task_id: Task uuid
         Prints detailed infomration of task.
         """
+
+        if task_id == "last":
+            task_id = db.task_list()[-1].uuid
         task = db.task_get_detailed(task_id)
 
         print()
@@ -90,7 +94,30 @@ class TaskCommands(object):
             table = prettytable.PrettyTable(["max", "avg", "min", "ratio"])
             table.add_row([max(times), sum(times) / len(times), min(times),
                            float(len(times)) / len(raw)])
+
+            print("\nTimings:")
             print(table)
+
+            print("\nScenario Specific Results\n"+"-"*80)
+           
+          
+            pprint.pprint(raw)
+            ssrs=[json.loads(result['scenario_specific_results']) for
+                    result in raw]
+
+            sys.stdout.flush()
+            keys=()
+            for ssr in ssrs:
+                keys.update(ssr['data'].keys())
+
+            ssr_table = prettytable.PrettyTable(["Key","max","avg","min"])
+            for key in keys:
+                values = [float(ssr['data'][key]) for ssr in ssrs if
+                        key in ssr['data']]
+                ssr_table.add_row([key,max(values),sum(values)/len(values),
+                    min(values)])
+
+
 
     @cliutils.args('--task-id', type=str, dest='task_id', help='uuid of task')
     @cliutils.args('--pretty', type=str, help='uuid of task')
