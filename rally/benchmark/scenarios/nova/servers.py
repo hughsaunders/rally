@@ -44,13 +44,13 @@ class NovaServers(utils.NovaScenario):
 
     @classmethod
     def boot_runcommand_delete_server(cls, context, image_id, flavor_id,
-                                      command, network='private',
+                                      script, interpreter, network='private',
                                       username='ubuntu', ip_version=4,
                                       **kwargs):
-        """Boot server, run a command, delete server.
+        """Boot server, run a script, delete server.
 
         Parameters:
-        command: Command to run on the server
+        script: script to run on the server
         network: Network to choose address to connect to instance from
         username: User to SSH to instance as
         ip_version: Version of ip protocol to use for connection
@@ -60,7 +60,7 @@ class NovaServers(utils.NovaScenario):
         server = cls._boot_server(server_name, image_id, flavor_id,
                                   key_name='rally_ssh_key', **kwargs)
 
-        # NOTE(Hughsaunders): Run command specified by 'command' parameters
+        # NOTE(Hughsaunders): Run script specified by 'script' parameters
         # within the instance. No output is captured so only the length of
         # time taken to run is significant. Example uses: IO or CPU benchmark.
 
@@ -71,10 +71,11 @@ class NovaServers(utils.NovaScenario):
 
         for retry in range(60):
             try:
-                streams = ssh.execute_command(command)
+                streams = ssh.execute_script(script=script,
+                                             interpreter=interpreter)
                 break
             except rally_exceptions.TimeoutException as e:
-                LOG.debug(_('Error running command on instance via SSH. %s/%s'
+                LOG.debug(_('Error running script on instance via SSH. %s/%s'
                             ' Attempt:%i, Error: %s' % (
                                 server.id, server_ip, retry,
                                 benchmark_utils._format_exc(e))))
