@@ -16,29 +16,75 @@
 
 from rally.benchmark import engine
 from rally import consts
-from rally.db import task
 from rally import deploy
+from rally import objects
 
 
-def start_task(config):
-    """Start Benchmark task.
-        1) Deploy OpenStack Cloud
-        2) Verify Deployment
-        3) Run Benchmarks
-        4) Process benchmark results
-        5) Destroy cloud and cleanup
-    Returns task uuid
+def create_deploy(config, name):
+    """Create a deployment.
+
+    :param config: a dict with deployment configuration
+    :param name: a str represents a name of the deployment
     """
-    deploy_conf = config['deploy']
-    task_object = task.Task()
-    deployer = deploy.EngineFactory.get_engine(deploy_conf['name'],
-                                               task_object,
-                                               deploy_conf)
-    tester = engine.TestEngine(config['tests'], task_object)
-
+    deployment = objects.Deployment(name=name, config=config)
+    deployer = deploy.EngineFactory.get_engine(deployment['config']['name'],
+                                               deployment)
     with deployer:
-        endpoints = deployer.make()
-        with tester.bind(endpoints):
+        endpoint = deployer.make_deploy()
+        deployment.update_endpoint(endpoint)
+
+
+def destroy_deploy(deploy_uuid):
+    """Destroy the deployment.
+
+    :param deploy_uuid: UUID of the deployment
+    """
+    # TODO(akscram): We have to be sure that there are no running
+    #                tasks for this deployment.
+    # TODO(akscram): Check that the deployment have got a status that
+    #                is equal to "*->finised" or "deploy->inconsistent".
+    deployment = objects.Deployment.get(deploy_uuid)
+    deployer = deploy.EngineFactory.get_engine(deployment['config']['name'],
+                                               deployment)
+    with deployer:
+        deployer.make_cleanup()
+        deployment.delete()
+
+
+def recreate_deploy(deploy_uuid):
+    """Performs a clean up and then start to deploy.
+
+    :param deploy_uuid: UUID of the deployment
+    """
+    deployment = objects.Deployment.get(deploy_uuid)
+    deployer = deploy.EngineFactory.get_engine(deployment['config']['name'],
+                                               deployment)
+    with deployer:
+        deployer.make_cleanup()
+        endpoint = deployer.make_deploy()
+        deployment.update_endpoint(endpoint)
+
+
+def start_task(deploy_uuid, config):
+    """Start a task.
+
+    A task is performed in two stages: a verification of a deployment
+    and a benchmark.
+
+    :param deploy_uuid: UUID of the deployment
+    :param config: a dict with a task configuration
+    """
+    deployment = objects.Deployment.get(deploy_uuid)
+    task = objects.Task(deployment_uuid=deploy_uuid)
+
+    tester = engine.TestEngine(config, task)
+    deployer = deploy.EngineFactory.get_engine(deployment['config']['name'],
+                                               deployment)
+    endpoint = deployment['endpoint']
+    with deployer:
+        with tester.bind(endpoint):
+            # TODO(akscram): The verifications should be a part of
+            #                deployment.
             tester.verify()
             tester.benchmark()
 
@@ -59,4 +105,4 @@ def delete_task(task_uuid, force=False):
              if not True
     """
     status = None if force else consts.TaskStatus.FINISHED
-    task.Task.delete_by_uuid(task_uuid, status=status)
+    objects.Task.delete_by_uuid(task_uuid, status=status)

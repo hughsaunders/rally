@@ -22,17 +22,18 @@ from rally.serverprovider import provider
 class DummyProvider(provider.ProviderFactory):
     """Just return endpoints from own configuration."""
 
-    def __init__(self, config):
+    def __init__(self, deployment, config):
+        super(DummyProvider, self).__init__(deployment, config)
         self.credentials = config['credentials']
 
     def create_vms(self):
         credentials = []
         for ep in self.credentials:
             user, host = ep.split('@')
-            credentials.append(provider.ServerDTO(uuid=uuid.uuid4(),
-                                                  ip=host,
-                                                  user=user,
-                                                  key=None))
+            credentials.append(provider.Server(uuid=uuid.uuid4(),
+                                               ip=host,
+                                               user=user,
+                                               key=None))
         return credentials
 
     def destroy_vms(self):

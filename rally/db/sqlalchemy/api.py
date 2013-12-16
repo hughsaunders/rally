@@ -66,7 +66,7 @@ def model_query(model, session=None):
     return query
 
 
-def _task_get_by_uuid(uuid, session=None):
+def _task_get(uuid, session=None):
     task = model_query(models.Task, session=session).\
                 filter_by(uuid=uuid).\
                 first()
@@ -75,8 +75,8 @@ def _task_get_by_uuid(uuid, session=None):
     return task
 
 
-def task_get_by_uuid(uuid):
-    return _task_get_by_uuid(uuid)
+def task_get(uuid):
+    return _task_get(uuid)
 
 
 def task_get_detailed(uuid):
@@ -97,7 +97,7 @@ def task_update(uuid, values):
     session = db_session.get_session()
     values.pop('uuid', None)
     with session.begin():
-        task = _task_get_by_uuid(uuid, session=session)
+        task = _task_get(uuid, session=session)
         task.update(values)
     return task
 
@@ -141,3 +141,80 @@ def task_result_get_all_by_uuid(uuid):
     return model_query(models.TaskResult).\
                 filter_by(task_uuid=uuid).\
                 all()
+
+
+def _deployment_get(uuid, session=None):
+    deploy = model_query(models.Deployment, session=session).\
+                filter_by(uuid=uuid).\
+                first()
+    if not deploy:
+        raise exceptions.DeploymentNotFound(uuid=uuid)
+    return deploy
+
+
+def deployment_create(values):
+    deployment = models.Deployment()
+    deployment.update(values)
+    deployment.save()
+    return deployment
+
+
+def deployment_delete(uuid):
+    session = db_session.get_session()
+    with session.begin():
+        count = model_query(models.Resource, session=session).\
+                filter_by(deployment_uuid=uuid).\
+                count()
+        if count:
+            raise exceptions.DeploymentIsBusy(uuid=uuid)
+
+        count = model_query(models.Deployment, session=session).\
+            filter_by(uuid=uuid).\
+            delete(synchronize_session=False)
+        if not count:
+            raise exceptions.DeploymentNotFound(uuid=uuid)
+
+
+def deployment_get(uuid):
+    return _deployment_get(uuid)
+
+
+def deployment_update(uuid, values):
+    session = db_session.get_session()
+    values.pop('uuid', None)
+    with session.begin():
+        deploy = _deployment_get(uuid, session=session)
+        deploy.update(values)
+    return deploy
+
+
+def deployment_list(status=None):
+    query = model_query(models.Deployment)
+    if status is not None:
+        query = query.filter_by(status=status)
+    return query.all()
+
+
+def resource_create(values):
+    resource = models.Resource()
+    resource.update(values)
+    resource.save()
+    return resource
+
+
+def resource_get_all(deployment_uuid, provider_name=None, type=None):
+    query = model_query(models.Resource).\
+                filter_by(deployment_uuid=deployment_uuid)
+    if provider_name is not None:
+        query = query.filter_by(provider_name=provider_name)
+    if type is not None:
+        query = query.filter_by(type=type)
+    return query.all()
+
+
+def resource_delete(id):
+    count = model_query(models.Resource).\
+                filter_by(id=id).\
+                delete(synchronize_session=False)
+    if not count:
+        raise exceptions.ResourceNotFound(id=id)

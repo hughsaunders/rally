@@ -118,8 +118,25 @@ class NoSuchScenario(NotFoundException):
     msg_fmt = _("There is no benchmark scenario with name `%(name)s`.")
 
 
+class NoSuchConfigField(NotFoundException):
+    msg_fmt = _("There is no field in the task config with name `%(name)s`.")
+
+
 class TaskNotFound(NotFoundException):
     msg_fmt = _("Task with uuid=%(uuid)s not found.")
+
+
+class DeploymentNotFound(NotFoundException):
+    msg_fmt = _("Deployment with uuid=%(uuid)s not found.")
+
+
+class DeploymentIsBusy(RallyException):
+    msg_fmt = _("There are allocated resources for the deployment with "
+                "uuid=%(uuid)s.")
+
+
+class ResourceNotFound(NotFoundException):
+    msg_fmt = _("Resource with id=%(id)s not found.")
 
 
 class TimeoutException(RallyException):
@@ -127,7 +144,8 @@ class TimeoutException(RallyException):
 
 
 class GetResourceFailure(RallyException):
-    msg_fmt = _("Failed to get the resource.")
+    msg_fmt = _("Failed to get the resource due to invalid status:"
+                "`%(status)s`")
 
 
 class SSHError(RallyException):
@@ -137,3 +155,7 @@ class SSHError(RallyException):
 class TaskInvalidStatus(RallyException):
     msg_fmt = _("Task `%(uuid)s` in `%(actual)s` status but `%(require)s` is "
                 "required.")
+
+
+class ChecksumMismatch(RallyException):
+    msg_fmt = _("Checksum mismatch for image: %(url)s")

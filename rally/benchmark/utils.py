@@ -13,15 +13,20 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import multiprocessing
 import os
 import pytest
 import random
+import time
 import traceback
+import uuid
 
 import fuel_health.cleanup as fuel_cleanup
 
 from rally.benchmark import base
+from rally.benchmark import cleanup_utils
+from rally import exceptions as rally_exceptions
 from rally.openstack.common.gettextutils import _  # noqa
 from rally.openstack.common import log as logging
 from rally import osclients
@@ -31,40 +36,106 @@ from rally import utils
 
 LOG = logging.getLogger(__name__)
 
-# NOTE(msdubov): This list is shared between multiple scenario processes.
+# NOTE(msdubov): These objects are shared between multiple scenario processes.
 __openstack_clients__ = []
+__admin_clients__ = {}
+__scenario_context__ = {}
+
+
+def resource_is(status):
+    return lambda resource: resource.status == status
+
+
+def is_none(obj):
+    return obj is None
+
+
+def get_from_manager(error_statuses=["ERROR"]):
+    def _get_from_manager(resource):
+        try:
+            resource = resource.manager.get(resource)
+        except Exception as e:
+            if getattr(e, 'http_status', 400) == 404:
+                return None
+            raise e
+        if resource.status in error_statuses:
+            raise rally_exceptions.GetResourceFailure(status=resource.status)
+        return resource
+    return _get_from_manager
+
+
+def manager_list_size(sizes):
+    def _list(mgr):
+        return len(mgr.list()) in sizes
+    return _list
+
+
+def _wait_for_list_statuses(mgr, statuses, list_query={},
+                            timeout=10, check_interval=1):
+
+    def _list_statuses(mgr):
+        for resource in mgr.list(**list_query):
+            if resource.status not in statuses:
+                return False
+        return True
+
+    utils.wait_for(mgr, is_ready=_list_statuses, update_resource=None,
+                   timeout=timeout, check_interval=check_interval)
+
+
+def _wait_for_empty_list(mgr, timeout=10, check_interval=1):
+    _wait_for_list_size(mgr, sizes=[0], timeout=timeout,
+                        check_interval=check_interval)
+
+
+def _wait_for_list_size(mgr, sizes=[0], timeout=10, check_interval=1):
+    utils.wait_for(mgr, is_ready=manager_list_size(sizes),
+                   update_resource=None, timeout=timeout,
+                   check_interval=check_interval)
+
+
+def false(resource):
+    return False
+
+
+def _async_cleanup(cls, indicies):
+    cls._cleanup_with_clients(indicies)
 
 
 def _format_exc(exc):
     return [str(type(exc)), str(exc), traceback.format_exc()]
 
 
+def _infinite_run_args(args):
+    i = 0
+    while True:
+        yield (i,) + args
+        i += 1
+
+
 def _run_scenario_loop(args):
-    i, cls, method_name, context, kwargs = args
+    i, cls, method_name, kwargs = args
 
     LOG.info("ITER: %s" % i)
 
     # NOTE(msdubov): Each scenario run uses a random openstack client
     #                from a predefined set to act from different users.
-    cls.clients = random.choice(__openstack_clients__)
+    cls._clients = random.choice(__openstack_clients__)
+    cls._admin_clients = __admin_clients__
+    cls._context = __scenario_context__
 
     cls.idle_time = 0
 
     scenario_specific_results = None
     try:
         with utils.Timer() as timer:
-            scenario_specific_results = getattr(cls, method_name)(context,
-                    **kwargs)
+            scenario_specific_results = getattr(cls, method_name)(**kwargs)
     except Exception as e:
         return {"time": timer.duration() - cls.idle_time,
                 "idle_time": cls.idle_time, "error": _format_exc(e)}
     return {"time": timer.duration() - cls.idle_time,
             "idle_time": cls.idle_time, "error": None,
             "scenario_specific_results":scenario_specific_results}
-
-    # NOTE(msdubov): Cleaning up after each scenario loop enables to delete
-    #                the resources of the user the scenario was run from.
-    cls.cleanup(context)
 
 
 def _create_openstack_clients(users_endpoints, keys):
@@ -125,26 +196,31 @@ class ScenarioRunner(object):
     def __init__(self, task, cloud_config):
         self.task = task
         self.endpoints = cloud_config
+
+        global __admin_clients__
         keys = ["admin_username", "admin_password", "admin_tenant_name", "uri"]
-        self.clients = _create_openstack_clients([self.endpoints], keys)[0]
+        __admin_clients__ = _create_openstack_clients([self.endpoints],
+                                                      keys)[0]
         base.Scenario.register()
 
     def _create_temp_tenants_and_users(self, tenants, users_per_tenant):
-        self.tenants = [self.clients["keystone"].tenants.create("tenant_%d" %
-                                                                i)
+        run_id = str(uuid.uuid4())
+        self.tenants = [__admin_clients__["keystone"].tenants.create(
+                            "temp_%(rid)s_tenant_%(iter)i" % {"rid": run_id,
+                                                              "iter": i})
                         for i in range(tenants)]
         self.users = []
         temporary_endpoints = []
         for tenant in self.tenants:
             for uid in range(users_per_tenant):
-                username = "user_%(tid)s_%(uid)d" % {"tid": tenant.id,
-                                                     "uid": uid}
+                username = "%(tname)s_user_%(uid)d" % {"tname": tenant.name,
+                                                       "uid": uid}
                 password = "password"
-                user = self.clients["keystone"].users.create(username,
-                                                             password,
-                                                             "%s@test.com" %
-                                                             username,
-                                                             tenant.id)
+                user = __admin_clients__["keystone"].users.create(username,
+                                                                  password,
+                                                                  "%s@test.com"
+                                                                  % username,
+                                                                  tenant.id)
                 self.users.append(user)
                 user_credentials = {
                     "username": username,
@@ -158,20 +234,64 @@ class ScenarioRunner(object):
 
         return temporary_endpoints
 
+    @classmethod
+    def _delete_nova_resources(cls, nova):
+        cleanup_utils._delete_servers(nova)
+        cleanup_utils._delete_keypairs(nova)
+        cleanup_utils._delete_security_groups(nova)
+        cleanup_utils._delete_networks(nova)
+
+    @classmethod
+    def _delete_cinder_resources(cls, cinder):
+        cleanup_utils._delete_volume_transfers(cinder)
+        cleanup_utils._delete_volumes(cinder)
+        cleanup_utils._delete_volume_types(cinder)
+        cleanup_utils._delete_volume_snapshots(cinder)
+        cleanup_utils._delete_volume_backups(cinder)
+
+    @classmethod
+    def _delete_glance_resources(cls, glance, project_uuid):
+        cleanup_utils._delete_images(glance, project_uuid)
+
+    @classmethod
+    def _cleanup_with_clients(cls, indexes):
+        for index in indexes:
+            clients = __openstack_clients__[index]
+            try:
+                cls._delete_nova_resources(clients["nova"])
+                cls._delete_glance_resources(clients["glance"],
+                                             clients["keystone"].project_id)
+                cls._delete_cinder_resources(clients["cinder"])
+            except Exception as e:
+                LOG.info(_('Unable to fully cleanup the cloud: %s') %
+                        (e.message))
+
+    def _cleanup_scenario(self, concurrent):
+        indexes = range(0, len(__openstack_clients__))
+        chunked_indexes = [indexes[i:i + concurrent]
+                           for i in range(0, len(indexes), concurrent)]
+        pool = multiprocessing.Pool(concurrent)
+        for client_indicies in chunked_indexes:
+            pool.apply_async(_async_cleanup, args=(ScenarioRunner,
+                                                   client_indicies,))
+        pool.close()
+        pool.join()
+
     def _delete_temp_tenants_and_users(self):
         for user in self.users:
             user.delete()
         for tenant in self.tenants:
             tenant.delete()
 
-    def _run_scenario(self, ctx, cls, method, args, times, concurrent,
-                      timeout):
-        test_args = [(i, cls, method, ctx, args) for i in xrange(times)]
+    def _run_scenario_continuously_for_times(self, cls, method, args,
+                                             times, concurrent, timeout):
+        test_args = [(i, cls, method, args) for i in xrange(times)]
 
         pool = multiprocessing.Pool(concurrent)
         iter_result = pool.imap(_run_scenario_loop, test_args)
 
         results = []
+
         for i in range(len(test_args)):
             try:
                 result = iter_result.next(timeout)
@@ -183,34 +303,91 @@ class ScenarioRunner(object):
 
         pool.close()
         pool.join()
+
         return results
+
+    def _run_scenario_continuously_for_duration(self, cls, method, args,
+                                                duration, concurrent, timeout):
+        pool = multiprocessing.Pool(concurrent)
+        run_args = _infinite_run_args((cls, method, args))
+        iter_result = pool.imap(_run_scenario_loop, run_args)
+
+        start = time.time()
+
+        results_queue = collections.deque([], maxlen=concurrent)
+
+        while True:
+
+            if time.time() - start > duration * 60:
+                break
+
+            try:
+                result = iter_result.next(timeout)
+            except multiprocessing.TimeoutError as e:
+                result = {"time": timeout, "error": _format_exc(e)}
+            except Exception as e:
+                result = {"time": None, "error": _format_exc(e)}
+            results_queue.append(result)
+
+        results = list(results_queue)
+
+        pool.terminate()
+        pool.join()
+
+        return results
+
+    def _run_scenario(self, cls, method, args, execution_type, config):
+        timeout = config.get("timeout", 10000)
+        concurrent = config.get("active_users", 1)
+
+        if execution_type == "continuous":
+
+            # NOTE(msdubov): If not specified, perform single scenario run.
+            if "duration" not in config and "times" not in config:
+                config["times"] = 1
+
+            # Continiously run a benchmark scenario the specified
+            # amount of times.
+            if "times" in config:
+                times = config["times"]
+                return self._run_scenario_continuously_for_times(
+                                cls, method, args, times, concurrent, timeout)
+
+            # Continiously run a scenario as many times as needed
+            # to fill up the given period of time.
+            elif "duration" in config:
+                duration = config["duration"]
+                return self._run_scenario_continuously_for_duration(
+                            cls, method, args, duration, concurrent, timeout)
 
     def run(self, name, kwargs):
         cls_name, method_name = name.split(".")
         cls = base.Scenario.get_by_name(cls_name)
 
         args = kwargs.get('args', {})
-        timeout = kwargs.get('timeout', 10000)
-        times = kwargs.get('times', 1)
-        concurrent = kwargs.get('concurrent', 1)
-        tenants = kwargs.get('tenants', 1)
-        users_per_tenant = kwargs.get('users_per_tenant', 1)
+        init_args = kwargs.get('init', {})
+        execution_type = kwargs.get('execution', 'continuous')
+        config = kwargs.get('config', {})
+        tenants = config.get('tenants', 1)
+        users_per_tenant = config.get('users_per_tenant', 1)
 
         temp_users = self._create_temp_tenants_and_users(tenants,
                                                          users_per_tenant)
 
+        global __openstack_clients__, __scenario_context__
+
         # NOTE(msdubov): Call init() with admin openstack clients
-        cls.clients = self.clients
-        ctx = cls.init(kwargs.get('init', {}))
+        cls._clients = __admin_clients__
+        __scenario_context__ = cls.init(init_args)
 
         # NOTE(msdubov): Launch scenarios with non-admin openstack clients
-        global __openstack_clients__
         keys = ["username", "password", "tenant_name", "uri"]
         __openstack_clients__ = _create_openstack_clients(temp_users, keys)
 
-        results = self._run_scenario(ctx, cls, method_name, args,
-                                     times, concurrent, timeout)
+        results = self._run_scenario(cls, method_name, args,
+                                     execution_type, config)
 
+        self._cleanup_scenario(config.get("active_users", 1))
         self._delete_temp_tenants_and_users()
 
         return results

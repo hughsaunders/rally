@@ -62,9 +62,9 @@ def db_drop():
     IMPL.db_drop()
 
 
-def task_get_by_uuid(uuid):
+def task_get(uuid):
     """Returns task by uuid."""
-    return IMPL.task_get_by_uuid(uuid)
+    return IMPL.task_get(uuid)
 
 
 def task_get_detailed(uuid):
@@ -127,3 +127,79 @@ def task_result_get_all_by_uuid(task_uuid):
 def task_result_create(task_uuid, key, data):
     """Append result record to task."""
     return IMPL.task_result_create(task_uuid, key, data)
+
+
+def deployment_create(values):
+    """Create a deployment from the values dictionary.
+
+    :param uuid: UUID of the deployment
+    :returns: a dict with data on the deployment
+    """
+    return IMPL.deployment_create(values)
+
+
+def deployment_delete(uuid):
+    """Delete a deployment by UUID.
+
+    :param uuid: UUID of the deployment
+    """
+    return IMPL.deployment_delete(uuid)
+
+
+def deployment_get(uuid):
+    """Get a deployment by UUID.
+
+    :param uuid: UUID of the deployment
+    :returns: a dict with data on the deployment
+    """
+    return IMPL.deployment_get(uuid)
+
+
+def deployment_update(uuid, values):
+    """Update a deployment by values.
+
+    :param uuid: UUID of the deployment
+    :param values: dict with items to update
+    :returns: a dict with data on the deployment
+    """
+    return IMPL.deployment_update(uuid, values)
+
+
+def deployment_list(status=None):
+    """Get list of deployments.
+
+    :param status: if None returns any deployments with any status.
+    :returns: a list of dicts with data on the deployments
+    """
+    return IMPL.deployment_list(status=status)
+
+
+def resource_create(values):
+    """Create a resource from the values dictionary.
+
+    :param values: a dict with data on the resource
+    :returns: a dict with updated data on the resource
+    """
+    return IMPL.resource_create(values)
+
+
+def resource_get_all(deployment_uuid, provider_name=None, type=None):
+    """Return resources of a deployment.
+
+    :param deployment_uuid: filter by uuid of a deployment
+    :param provider_name: filter by provider_name, if is None, then
+                          return all prorivders
+    :param type: filter by type, if is None, then return all types
+    :returns: a list of dicts with data on a resource
+    """
+    return IMPL.resource_get_all(deployment_uuid,
+                                 provider_name=provider_name,
+                                 type=type)
+
+
+def resource_delete(id):
+    """Delete a resource.
+
+    :param id: ID of a resource
+    """
+    return IMPL.resource_delete(id)

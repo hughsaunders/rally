@@ -57,10 +57,12 @@ class TestEngine(object):
                 "NovaServers.boot_and_delete_server": [
                     {"args": {"flavor_id": <flavor_id>,
                               "image_id": "<image_id>"},
-                     "times": 1, "concurrent": 1},
+                     "execution": "continuous",
+                     "config": {"times": 1, "active_users": 1}},
                     {"args": {"flavor_id": <flavor_id>,
                               "image_id": "<image_id>"},
-                     "times": 4, "concurrent": 2}
+                     "execution": "continuous",
+                     "config": {"times": 4, "active_users": 2}}
                 ]
             }
         }
@@ -112,6 +114,14 @@ class TestEngine(object):
                                 'benchmark scenario does not exist: %s') %
                               (task_uuid, scenario))
                 raise exceptions.NoSuchScenario(name=scenario)
+            for run in test_config['benchmark'][scenario]:
+                if 'times' in run['config'] and 'duration' in run['config']:
+                    message = _("'times' and 'duration' cannot be set "
+                                "simultaneously for one continuous "
+                                "scenario run.")
+                    LOG.exception(_('Task %s: Error: %s') % (task_uuid,
+                                                             message))
+                    raise exceptions.InvalidConfigException(message=message)
 
     @rutils.log_task_wrapper(LOG.debug, _("Test config formatting."))
     def _format_test_config(self, test_config):
@@ -136,9 +146,14 @@ class TestEngine(object):
         with os.fdopen(self.cloud_config_fd, 'w') as f:
             self.cloud_config.write(f)
 
-    @rutils.log_task_wrapper(LOG.debug, _("Verification temp file deletion."))
-    def __exit__(self, type, value, traceback):
+    @rutils.log_task_wrapper(LOG.debug, _("Deleting the temp verification "
+                                          "config file & Finishing the task."))
+    def __exit__(self, exc_type, exc_value, exc_traceback):
         os.remove(self.cloud_config_path)
+        if exc_type is not None:
+            self.task.update_status(consts.TaskStatus.FAILED)
+        else:
+            self.task.update_status(consts.TaskStatus.FINISHED)
 
     @rutils.log_task_wrapper(LOG.info, _('OS cloud binding to Rally.'))
     def bind(self, cloud_config):

@@ -15,7 +15,7 @@
 
 """Test dummy deploy engines."""
 
-import mock
+import jsonschema
 
 from rally import deploy
 from rally.deploy.engines import dummy_engine
@@ -23,23 +23,46 @@ from rally import test
 
 
 class TestDummyDeployEngine(test.TestCase):
+    def setUp(self):
+        self.deployment = {
+            'config': {
+                'name': 'DummyEngine',
+                'cloud_config': {
+                    'identity': {
+                        'url': 'http://example.net/',
+                        'uri': 'http://example.net:5000/v2.0/',
+                        'admin_username': 'admin',
+                        'admin_password': 'myadminpass',
+                        'admin_tenant_name': 'demo',
+                    },
+                },
+            },
+        }
+        super(TestDummyDeployEngine, self).setUp()
 
     def test_dummy_egnine_init(self):
-        dummy_engine.DummyEngine(mock.MagicMock(), {})
-
-    def test_dummy_engine_init_with_deploy_config(self):
-        cloud_config = {'cloud_config': {'a': 1, 'b': 2}}
-        dummy_engine.DummyEngine(mock.MagicMock(), cloud_config)
+        dummy_engine.DummyEngine(self.deployment)
 
     def test_dummy_engine_deploy(self):
-        cloud_config = {'cloud_config': {'a': 1, 'b': 2}}
-        engine = dummy_engine.DummyEngine(mock.MagicMock(), cloud_config)
-        self.assertEqual(engine.deploy(), cloud_config['cloud_config'])
+        engine = dummy_engine.DummyEngine(self.deployment)
+        endpoint = engine.deploy()
+        self.assertEqual(endpoint, self.deployment['config']['cloud_config'])
 
     def test_dummy_engine_cleanup(self):
-        dummy_engine.DummyEngine(mock.MagicMock(), {}).cleanup()
+        dummy_engine.DummyEngine(self.deployment).cleanup()
 
     def test_dummy_engine_is_in_factory(self):
-        engine = deploy.EngineFactory.get_engine('DummyEngine',
-                                                 mock.MagicMock(), {})
+        name = self.deployment['config']['name']
+        engine = deploy.EngineFactory.get_engine(name,
+                                                 self.deployment)
         self.assertIsInstance(engine, dummy_engine.DummyEngine)
+
+    def test_init_invalid_config(self):
+        self.deployment['config']['cloud_config']['identity'] = 42
+        self.assertRaises(jsonschema.ValidationError,
+                          dummy_engine.DummyEngine, self.deployment)
+
+    def test_deploy(self):
+        engine = dummy_engine.DummyEngine(self.deployment)
+        self.assertEqual(self.deployment['config']['cloud_config'],
+                         engine.deploy())

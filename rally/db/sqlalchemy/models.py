@@ -37,10 +37,83 @@ class RallyBase(models.TimestampMixin,
     metadata = None
 
 
+class Deployment(BASE, RallyBase):
+    """Represent a deployment of OpenStack."""
+    __tablename__ = "deployments"
+    __table_args__ = (
+        sa.Index('deployment_uuid', 'uuid', unique=True),
+    )
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    uuid = sa.Column(sa.String(36), default=UUID, nullable=False)
+    name = sa.Column(sa.String(255))
+    # XXX(akscram): Do we need to explicitly store a name of the
+    #               deployment engine?
+    #engine_name = sa.Column(sa.String(36))
+
+    config = sa.Column(
+        sa_types.MutableDict.as_mutable(sa_types.JSONEncodedDict),
+        default={},
+        nullable=False,
+    )
+
+    # TODO(akscram): Actually a endpoint of a deployment can be
+    #                represented by a set of parameters are auth_url,
+    #                user, password and project.
+    endpoint = sa.Column(
+        sa_types.MutableDict.as_mutable(sa_types.JSONEncodedDict),
+        default={},
+        nullable=False,
+    )
+
+    status = sa.Column(
+        sa.Enum(*consts.DeployStatus),
+        name='enum_deployments_status',
+        default=consts.DeployStatus.DEPLOY_INIT,
+        nullable=False,
+    )
+
+
+class Resource(BASE, RallyBase):
+    """Represent a resource of a deployment."""
+    __tablename__ = 'resources'
+    __table_args__ = (
+        sa.Index('resource_deployment_uuid', 'deployment_uuid'),
+        sa.Index('resource_provider_name', 'deployment_uuid', 'provider_name'),
+        sa.Index('resource_type', 'deployment_uuid', 'type'),
+        sa.Index('resource_provider_name_and_type', 'deployment_uuid',
+                 'provider_name', 'type'),
+    )
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    provider_name = sa.Column(sa.String(255))
+    type = sa.Column(sa.String(255))
+
+    info = sa.Column(
+        sa_types.MutableDict.as_mutable(sa_types.JSONEncodedDict),
+        default={},
+        nullable=False,
+    )
+
+    deployment_uuid = sa.Column(
+        sa.String(36),
+        sa.ForeignKey(Deployment.uuid),
+        nullable=False,
+    )
+    deployment = sa.orm.relationship(
+        Deployment,
+        backref=sa.orm.backref('resources'),
+        foreign_keys=deployment_uuid,
+        primaryjoin=(deployment_uuid == Deployment.uuid),
+    )
+
+
 class Task(BASE, RallyBase):
     """Represents a Benchamrk task."""
     __tablename__ = 'tasks'
-    __table_args__ = ()
+    __table_args__ = (
+        sa.Index('task_uuid', 'uuid', unique=True),
+    )
 
     id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
     uuid = sa.Column(sa.String(36), default=UUID, nullable=False)
@@ -49,6 +122,18 @@ class Task(BASE, RallyBase):
                        default=consts.TaskStatus.INIT, nullable=False)
     failed = sa.Column(sa.Boolean, default=False, nullable=False)
     verification_log = sa.Column(sa.Text, default='', nullable=True)
+
+    deployment_uuid = sa.Column(
+        sa.String(36),
+        sa.ForeignKey(Deployment.uuid),
+        nullable=False,
+    )
+    deployment = sa.orm.relationship(
+        Deployment,
+        backref=sa.orm.backref('tasks'),
+        foreign_keys=deployment_uuid,
+        primaryjoin=(deployment_uuid == Deployment.uuid),
+    )
 
 
 class TaskResult(BASE, RallyBase):

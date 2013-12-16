@@ -28,21 +28,7 @@ class _TaskStatus(utils.ImmutableMixin, utils.EnumMixin):
     INIT = 'init'
     CLEANUP = 'cleanup'
     FINISHED = 'finished'
-
-    REPO_TOOL_GETTING_REPOS = 'repo_tool->getting_repos'
-
-    DEPLOY_STARTED = 'deploy->started'
-    DEPLOY_CREATING_VENV = 'deploy->create_venv_to_deploy_openstack'
-    DEPLOY_BUILDING_OPENSTACK_IN_VENV = 'deploy->building_openstack_in_venv'
-    DEPLOY_BUILDING_IMAGE = 'deploy->building_images_with_openstack'
-    DEPLOY_BUILDING_OPENSTACK = 'deploy->building_openstack'
-    DEPLOY_STARTING_OPENSTACK = 'deploy->starting_openstack'
-    DEPLOY_FINISHED = 'deploy->finished'
-
-    VM_PROVIDER_UPLOADING_IMAGE = 'vm_provider->uploading_vm_image'
-    VM_PROVIDER_DESTROYING_IMAGE = 'vm_provider->destroying_image'
-    VM_PROVIDER_GETTING_VMS = 'vm_provide->getting_vms'
-    VM_PROVIDER_DESTROYING_VMS = 'vm_provider->destroying_vms'
+    FAILED = 'failed'
 
     TEST_TOOL_PATCHING_OPENSTACK = 'test_tool->patching_openstack'
     TEST_TOOL_VERIFY_OPENSTACK = 'test_tool->verify_openstack'
@@ -50,4 +36,18 @@ class _TaskStatus(utils.ImmutableMixin, utils.EnumMixin):
     TEST_TOOL_PROCESSING_RESULTS = 'test_tool->result_processing'
 
 
+class _DeployStatus(utils.ImmutableMixin, utils.EnumMixin):
+    DEPLOY_INIT = 'deploy->init'
+    DEPLOY_STARTED = 'deploy->started'
+    DEPLOY_FINISHED = 'deploy->finished'
+    DEPLOY_FAILED = 'deploy->failed'
+
+    DEPLOY_INCONSISTENT = 'deploy->inconsistent'
+
+    CLEANUP_STARTED = 'cleanup->started'
+    CLEANUP_FINISHED = 'cleanup->finished'
+    CLEANUP_FAILED = 'cleanup->failed'
+
+
 TaskStatus = _TaskStatus()
+DeployStatus = _DeployStatus()

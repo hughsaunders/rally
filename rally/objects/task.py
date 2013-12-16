@@ -17,33 +17,39 @@ from rally import db
 
 
 class Task(object):
-    """Represents task object."""
+    """Represents a task object."""
 
-    def __init__(self, db_task=None):
-        if db_task:
-            self.task = db_task
+    def __init__(self, task=None, **attributes):
+        if task:
+            self.task = task
         else:
-            self.task = db.task_create({})
+            self.task = db.task_create(attributes)
 
     def __getitem__(self, key):
             return self.task[key]
 
     @staticmethod
-    def get_by_uuid(uuid):
-        return Task(db.task_get_by_uuid(uuid))
+    def get(uuid):
+        return Task(db.task_get(uuid))
 
     @staticmethod
     def delete_by_uuid(uuid, status=None):
         db.task_delete(uuid, status=status)
 
+    def _update(self, values):
+        self.task = db.task_update(self.task['uuid'], values)
+
     def update_status(self, status):
-        db.task_update(self.task['uuid'], {'status': status})
+        self._update({'status': status})
 
     def update_verification_log(self, log):
-        db.task_update(self.task['uuid'], {'verification_log': log})
+        self._update({'verification_log': log})
 
     def set_failed(self):
-        db.task_update(self.task['uuid'], {'failed': True})
+        self._update({'failed': True})
 
     def append_results(self, key, value):
         db.task_result_create(self.task['uuid'], key, value)
+
+    def delete(self, status=None):
+        db.task_delete(self.task['uuid'], status=status)

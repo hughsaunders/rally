@@ -33,6 +33,7 @@ class FakeResource(object):
         self.status = "ACTIVE"
         self.manager = manager
         self.uuid = uuid.uuid4()
+        self.id = self.uuid
 
     def __getattr__(self, name):
         # NOTE(msdubov): e.g. server.delete() -> manager.delete(server)
@@ -58,7 +59,9 @@ class FakeFailedServer(FakeResource):
 
 
 class FakeImage(FakeResource):
-    pass
+
+    def __init__(self, manager=None):
+        super(FakeImage, self).__init__(manager)
 
 
 class FakeFloatingIP(FakeResource):
@@ -77,6 +80,34 @@ class FakeNetwork(FakeResource):
     pass
 
 
+class FakeKeypair(FakeResource):
+    pass
+
+
+class FakeSecurityGroup(FakeResource):
+    pass
+
+
+class FakeVolume(FakeResource):
+    pass
+
+
+class FakeVolumeType(FakeResource):
+    pass
+
+
+class FakeVolumeTransfer(FakeResource):
+    pass
+
+
+class FakeVolumeSnapshot(FakeResource):
+    pass
+
+
+class FakeVolumeBackup(FakeResource):
+    pass
+
+
 class FakeManager(object):
 
     def __init__(self):
@@ -84,12 +115,11 @@ class FakeManager(object):
         self.cache = {}
 
     def get(self, resource):
-        if resource == 'img_uuid':
-            return 'img_uuid'
-        return self.cache.get(resource.uuid, None)
+        uuid = getattr(resource, 'uuid', None) or resource
+        return self.cache.get(uuid, None)
 
     def delete(self, resource):
-        cached = self.cache.get(resource.uuid, None)
+        cached = self.get(resource)
         if cached is not None:
             del self.cache[cached.uuid]
 
@@ -106,8 +136,9 @@ class FakeManager(object):
 
 class FakeServerManager(FakeManager):
 
-    def __init__(self):
+    def __init__(self, image_mgr=None):
         super(FakeServerManager, self).__init__()
+        self.images = image_mgr or FakeImageManager()
 
     def get(self, resource):
         server = self.cache.get(resource.uuid, None)
@@ -125,7 +156,8 @@ class FakeServerManager(FakeManager):
         return self._create(name=name)
 
     def create_image(self, server, name):
-        return "img_uuid"
+        image = self.images.create()
+        return image.uuid
 
     def add_floating_ip(self, server, fip):
         pass
@@ -143,7 +175,12 @@ class FakeFailedServerManager(FakeServerManager):
 class FakeImageManager(FakeManager):
 
     def create(self):
-        return FakeImage(self)
+        return self._cache(FakeImage(self))
+
+    def delete(self, image):
+        cached = self.cache.get(image.uuid, None)
+        if cached is not None:
+            cached.status = "DELETED"
 
 
 class FakeFloatingIPsManager(FakeManager):
@@ -166,22 +203,96 @@ class FakeNetworkManager(FakeManager):
         return self._cache(net)
 
 
+class FakeKeypairManager(FakeManager):
+
+    def create(self, name):
+        kp = FakeKeypair(self)
+        kp.name = name or kp.name
+        return self._cache(kp)
+
+
+class FakeSecurityGroupManager(FakeManager):
+
+    def create(self, name):
+        sg = FakeSecurityGroup(self)
+        sg.name = name or sg.name
+        return self._cache(sg)
+
+
 class FakeUsersManager(FakeManager):
 
     def create(self, username, password, email, tenant_id):
         return FakeUser(self)
 
 
+class FakeVolumeManager(FakeManager):
+
+    def create(self, name=None):
+        volume = FakeVolume(self)
+        volume.name = name or volume.name
+        return self._cache(volume)
+
+
+class FakeVolumeTypeManager(FakeManager):
+
+    def create(self, name):
+        vol_type = FakeVolumeType(self)
+        vol_type.name = name or vol_type.name
+        return self._cache(vol_type)
+
+
+class FakeVolumeTransferManager(FakeManager):
+
+    def create(self, name):
+        transfer = FakeVolumeTransfer(self)
+        transfer.name = name or transfer.name
+        return self._cache(transfer)
+
+
+class FakeVolumeSnapshotManager(FakeManager):
+
+    def create(self, name):
+        snapshot = FakeVolumeSnapshot(self)
+        snapshot.name = name or snapshot.name
+        return self._cache(snapshot)
+
+
+class FakeVolumeBackupManager(FakeManager):
+
+    def create(self, name):
+        backup = FakeVolumeBackup(self)
+        backup.name = name or backup.name
+        return self._cache(backup)
+
+
+class FakeGlanceClient(object):
+
+    def __init__(self, nova_client):
+        self.images = nova_client.images
+
+
+class FakeCinderClient(object):
+
+    def __init__(self):
+        self.volumes = FakeVolumeManager()
+        self.volume_types = FakeVolumeTypeManager()
+        self.transfers = FakeVolumeTransferManager()
+        self.volume_snapshots = FakeVolumeSnapshotManager()
+        self.backups = FakeVolumeBackupManager()
+
+
 class FakeNovaClient(object):
 
     def __init__(self, failed_server_manager=False):
-        if failed_server_manager:
-            self.servers = FakeFailedServerManager()
-        else:
-            self.servers = FakeServerManager()
         self.images = FakeImageManager()
+        if failed_server_manager:
+            self.servers = FakeFailedServerManager(self.images)
+        else:
+            self.servers = FakeServerManager(self.images)
         self.floating_ips = FakeFloatingIPsManager()
         self.networks = FakeNetworkManager()
+        self.keypairs = FakeKeypairManager()
+        self.security_groups = FakeSecurityGroupManager()
 
 
 class FakeKeystoneClient(object):
@@ -189,34 +300,46 @@ class FakeKeystoneClient(object):
     def __init__(self):
         self.tenants = FakeTenantsManager()
         self.users = FakeUsersManager()
+        self.project_id = 'abc123'
 
 
 class FakeClients(object):
 
+    def __init__(self):
+        self.nova = None
+        self.glance = None
+        self.keystone = None
+        self.cinder = None
+
     def get_keystone_client(self):
-        return FakeKeystoneClient()
+        if self.keystone is not None:
+            return self.keystone
+        self.keystone = FakeKeystoneClient()
+        return self.keystone
 
     def get_nova_client(self):
-        return FakeNovaClient()
+        if self.nova is not None:
+            return self.nova
+        self.nova = FakeNovaClient()
+        return self.nova
 
     def get_glance_client(self):
-        return "glance"
+        if self.glance is not None:
+            return self.glance
+        self.glance = FakeGlanceClient(self.get_nova_client())
+        return self.glance
 
     def get_cinder_client(self):
-        return "cinder"
+        if self.cinder is not None:
+            return self.cinder
+        self.cinder = FakeCinderClient()
+        return self.cinder
 
 
 class NovaScenarioTestCase(test.TestCase):
 
     def setUp(self):
         super(NovaScenarioTestCase, self).setUp()
-        self.rally_utils = "rally.benchmark.scenarios.nova.utils.utils"
-        self.utils_resource_is = ("rally.benchmark.scenarios.nova.utils"
-                                  "._resource_is")
-        self.osclients = "rally.benchmark.utils.osclients"
-        self.nova_scenario = ("rally.benchmark.scenarios.nova.utils."
-                              "NovaScenario")
-        self.sleep = "rally.benchmark.scenarios.nova.utils.time.sleep"
 
     def test_generate_random_name(self):
         for length in [8, 16, 32, 64]:
@@ -227,94 +350,58 @@ class NovaScenarioTestCase(test.TestCase):
     def test_failed_server_status(self):
         server_manager = FakeFailedServerManager()
         self.assertRaises(rally_exceptions.GetResourceFailure,
-                          utils._get_from_manager,
+                          butils.get_from_manager(),
                           server_manager.create('fails', '1', '2'))
 
-    def test_cleanup_failed(self):
-        with mock.patch(self.osclients) as mock_osclients:
-            fc = FakeClients()
-            mock_osclients.Clients.return_value = fc
-            failed_nova = FakeNovaClient(failed_server_manager=True)
-            fc.get_nova_client = lambda: failed_nova
+    @mock.patch("rally.benchmark.scenarios.nova.utils.time.sleep")
+    @mock.patch("rally.utils")
+    @mock.patch("rally.benchmark.utils.osclients")
+    @mock.patch("rally.benchmark.utils.resource_is")
+    def test_server_helper_methods(self, mock_ris, mock_osclients,
+                                   mock_rally_utils, mock_sleep):
 
-            temp_keys = ["username", "password", "tenant_name", "uri"]
-            users_endpoints = [dict(zip(temp_keys, temp_keys))]
-            utils.NovaScenario.clients = butils._create_openstack_clients(
-                                                users_endpoints, temp_keys)[0]
+        def _is_ready(resource):
+            return resource.status == "ACTIVE"
 
-            with mock.patch(self.sleep):
-                # NOTE(boden): verify failed server cleanup
-                self.assertRaises(rally_exceptions.GetResourceFailure,
-                                  utils.NovaScenario._boot_server,
-                                  "fails", 0, 1)
-            self.assertEquals(len(failed_nova.servers.list()), 1,
-                              "Server not created")
-            utils.NovaScenario.cleanup({})
-            self.assertEquals(len(failed_nova.servers.list()), 0,
-                              "Servers not purged")
+        mock_ris.return_value = _is_ready
+        get_from_mgr = butils.get_from_manager()
 
-    def test_cleanup(self):
-        with mock.patch(self.osclients) as mock_osclients:
-            fc = FakeClients()
-            mock_osclients.Clients.return_value = fc
-            fake_nova = FakeNovaClient()
-            fc.get_nova_client = lambda: fake_nova
+        fc = FakeClients()
+        mock_osclients.Clients.return_value = fc
+        fake_nova = FakeNovaClient()
+        fc.get_nova_client = lambda: fake_nova
+        fsm = FakeServerManager(fake_nova.images)
+        fake_server = fsm.create("s1", "i1", 1)
+        fsm.create = lambda name, iid, fid: fake_server
+        fake_nova.servers = fsm
+        fake_image_id = fsm.create_image(fake_server, 'img')
+        fake_image = fsm.images.get(fake_image_id)
+        fsm.create_image = lambda svr, name: fake_image
+        temp_keys = ["username", "password", "tenant_name", "uri"]
+        users_endpoints = [dict(zip(temp_keys, temp_keys))]
+        utils.NovaScenario._clients = butils.\
+            _create_openstack_clients(users_endpoints, temp_keys)[0]
+        utils.utils = mock_rally_utils
+        utils.bench_utils.get_from_manager = lambda: get_from_mgr
 
-            temp_keys = ["username", "password", "tenant_name", "uri"]
-            users_endpoints = [dict(zip(temp_keys, temp_keys))]
-            utils.NovaScenario.clients = butils._create_openstack_clients(
-                                                users_endpoints, temp_keys)[0]
-
-            # NOTE(boden): verify active server cleanup
-            with mock.patch(self.sleep):
-                for i in range(5):
-                    utils.NovaScenario._boot_server("server-%s" % i, 0, 1)
-            self.assertEquals(len(fake_nova.servers.list()), 5,
-                              "Server not created")
-            utils.NovaScenario.cleanup({})
-            self.assertEquals(len(fake_nova.servers.list()), 0,
-                              "Servers not purged")
-
-    def test_server_helper_methods(self):
-        with mock.patch(self.rally_utils) as mock_rally_utils:
-            with mock.patch(self.utils_resource_is) as mock_resource_is:
-                mock_resource_is.return_value = {}
-                with mock.patch(self.osclients) as mock_osclients:
-                    fc = FakeClients()
-                    mock_osclients.Clients.return_value = fc
-                    fake_nova = FakeNovaClient()
-                    fc.get_nova_client = lambda: fake_nova
-                    fsm = FakeServerManager()
-                    fake_server = fsm.create("s1", "i1", 1)
-                    fsm.create = lambda name, iid, fid: fake_server
-                    fake_nova.servers = fsm
-
-                    temp_keys = ["username", "password",
-                                 "tenant_name", "uri"]
-                    users_endpoints = [dict(zip(temp_keys, temp_keys))]
-                    utils.NovaScenario.clients = butils.\
-                        _create_openstack_clients(users_endpoints,
-                                                  temp_keys)[0]
-
-                    with mock.patch(self.sleep):
-                        utils.NovaScenario._boot_server("s1", "i1", 1)
-                        utils.NovaScenario._create_image(fake_server)
-                        utils.NovaScenario._suspend_server(fake_server)
-                        utils.NovaScenario._delete_server(fake_server)
+        utils.NovaScenario._boot_server("s1", "i1", 1)
+        utils.NovaScenario._create_image(fake_server)
+        utils.NovaScenario._suspend_server(fake_server)
+        utils.NovaScenario._delete_server(fake_server)
 
         expected = [
-            mock.call.wait_for(fake_server, is_ready={},
-                               update_resource=utils._get_from_manager,
-                               timeout=600, check_interval=3),
-            mock.call.wait_for("img_uuid", is_ready={},
-                               update_resource=utils._get_from_manager,
-                               timeout=600, check_interval=3),
-            mock.call.wait_for(fake_server, is_ready={},
-                               update_resource=utils._get_from_manager,
-                               timeout=600, check_interval=3),
-            mock.call.wait_for(fake_server, is_ready=utils._false,
-                               update_resource=utils._get_from_manager,
-                               timeout=600, check_interval=3)
+            mock.call.wait_for(fake_server, is_ready=_is_ready,
+                               update_resource=butils.get_from_manager(),
+                               check_interval=3, timeout=600),
+            mock.call.wait_for(fake_image, is_ready=_is_ready,
+                               update_resource=butils.get_from_manager(),
+                               check_interval=3, timeout=600),
+            mock.call.wait_for(fake_server, is_ready=_is_ready,
+                               update_resource=butils.get_from_manager(),
+                               check_interval=3, timeout=600),
+            mock.call.wait_for(fake_server, is_ready=butils.is_none,
+                               update_resource=butils.get_from_manager(),
+                               check_interval=3, timeout=600)
         ]
 
-        self.assertEqual(mock_rally_utils.mock_calls, expected)
+        self.assertEqual(expected, mock_rally_utils.mock_calls)

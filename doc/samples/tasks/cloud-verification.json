@@ -1,0 +1,7 @@
+{
+    "verify": [
+        "sanity",
+        "smoke"
+    ],
+    "benchmark": {}
+}

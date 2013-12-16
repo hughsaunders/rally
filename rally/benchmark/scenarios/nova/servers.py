@@ -30,13 +30,13 @@ from rally.openstack.common import log as logging
 LOG = logging.getLogger(__name__)
 
 ACTION_BUILDER = scenario_utils.ActionBuilder(
-        ['hard_reboot', 'soft_reboot', 'stop_start'])
+        ['hard_reboot', 'soft_reboot', 'stop_start', 'rescue_unrescue'])
 
 
 class NovaServers(utils.NovaScenario):
 
     @classmethod
-    def boot_and_delete_server(cls, context, image_id, flavor_id,
+    def boot_and_delete_server(cls, image_id, flavor_id,
                                min_sleep=0, max_sleep=0, **kwargs):
         """Tests booting and then deleting an image."""
         server_name = cls._generate_random_name(16)
@@ -100,7 +100,7 @@ class NovaServers(utils.NovaScenario):
         return {'data':stdout_str}
 
     @classmethod
-    def boot_and_bounce_server(cls, context, image_id, flavor_id, **kwargs):
+    def boot_and_bounce_server(cls, image_id, flavor_id, **kwargs):
         """Tests booting a server then performing stop/start or hard/soft
         reboot a number of times.
         """
@@ -115,9 +115,10 @@ class NovaServers(utils.NovaScenario):
                                   image_id, flavor_id, **kwargs)
         for action in ACTION_BUILDER.build_actions(actions, server):
             action()
+        cls._delete_server(server)
 
     @classmethod
-    def snapshot_server(cls, context, image_id, flavor_id, **kwargs):
+    def snapshot_server(cls, image_id, flavor_id, **kwargs):
         """Tests Nova instance snapshotting."""
         server_name = cls._generate_random_name(16)
 
@@ -130,11 +131,11 @@ class NovaServers(utils.NovaScenario):
         cls._delete_image(image)
 
     @classmethod
-    def boot_server(cls, context, image_id, flavor_id, **kwargs):
+    def boot_server(cls, image_id, flavor_id, **kwargs):
         """Test VM boot - assumed clean-up is done elsewhere."""
         server_name = cls._generate_random_name(16)
         if 'nics' not in kwargs:
-            nets = cls.clients["nova"].networks.list()
+            nets = cls.clients("nova").networks.list()
             if nets:
                 random_nic = random.choice(nets)
                 kwargs['nics'] = [{'net-id': random_nic.id}]
@@ -155,9 +156,27 @@ class NovaServers(utils.NovaScenario):
         cls._stop_server(server)
         cls._start_server(server)
 
+    @classmethod
+    def _rescue_and_unrescue_server(cls, server):
+        """Rescue and then unrescue the given server.
+        A rescue will be issued on the given server upon which time
+        this method will wait for the server to become 'RESCUE'.
+        Once the server is RESCUE a unrescue will be issued and
+        this method will wait for the server to become 'ACTIVE'
+        again.
+
+        :param server: The server to rescue and then unrescue.
+
+        """
+        cls._rescue_server(server)
+        cls._unrescue_server(server)
+
+
 ACTION_BUILDER.bind_action('hard_reboot',
                            utils.NovaScenario._reboot_server, soft=False)
 ACTION_BUILDER.bind_action('soft_reboot',
                            utils.NovaScenario._reboot_server, soft=True)
 ACTION_BUILDER.bind_action('stop_start',
                            NovaServers._stop_and_start_server)
+ACTION_BUILDER.bind_action('rescue_unrescue',
+                           NovaServers._rescue_and_unrescue_server)
