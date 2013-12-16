@@ -173,7 +173,7 @@ def _prepare_for_instance_ssh(clients):
 
         if ('rally_ssh_key' not in
             [k.name for k in nova_client.keypairs.list()]):
-            client_dict['ssh_key_pair'] = sshutils.generate_ssh_keypair()
+            client_dict['ssh_key_pair'] = sshutils.SSH.generate_ssh_keypair()
             nova_client.keypairs.create(
                 'rally_ssh_key',client_dict['ssh_key_pair']['public'])
 
@@ -227,7 +227,7 @@ class ScenarioRunner(object):
                     "password": password,
                     "tenant_name": tenant.name,
                     "uri": self.endpoints["uri"],
-                    "ssh_key_pair": sshutils.generate_ssh_keypair()
+                    "ssh_key_pair": sshutils.SSH.generate_ssh_keypair()
                     }
                 temporary_endpoints.append(user_credentials)
 

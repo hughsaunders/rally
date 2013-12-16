@@ -32,7 +32,7 @@ LOG = logging.getLogger(__name__)
 class SSH(object):
     """SSH common functions."""
 
-    def __init__(self, ip, user, port=22, key=None, timeout=1800):
+    def __init__(self, ip, user, port=22, key=None, key_string=None, timeout=1800):
         """Initialize SSH client with ip, username and the default values.
 
         timeout - the timeout for execution of the command
@@ -41,10 +41,13 @@ class SSH(object):
         self.user = user
         self.timeout = timeout
         self.client = None
-        if key:
-            self.key = key
+        if key_string:
+            self.key_string=key_string
         else:
-            self.key = os.path.expanduser('~/.ssh/id_rsa')
+            if key:
+                self.key = key
+            else:
+                self.key = os.path.expanduser('~/.ssh/id_rsa')
 
     @classmethod
     def generate_ssh_keypair(cls, key_size=2048):
@@ -61,16 +64,28 @@ class SSH(object):
         return {'private': priv_key_string,
                 'public':  pub_key_string}
 
+
     def _get_ssh_connection(self):
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.client.connect(self.ip, username=self.user, key_filename=self.key)
+        connect_params={
+            'hostname': self.ip,
+            'username': self.user
+        }
+        if self.key_string:
+            connect_params['pkey']=paramiko.RSAKey(
+                    file_obj=StringIO(self.key_string))
+        else:
+            connect_params['key_filename']=self.key
+        self.client.connect(**connect_params)
 
     def _is_timed_out(self, start_time):
         return (time.time() - self.timeout) > start_time
 
     def execute(self, *cmd):
         """Execute the specified command on the server."""
+        stdout=''
+        stderr=''
         self._get_ssh_connection()
         cmd = ' '.join(cmd)
         transport = self.client.get_transport()
@@ -93,9 +108,11 @@ class SSH(object):
             if channel.recv_ready():
                 out_chunk = channel.recv(4096)
                 LOG.debug(out_chunk)
+                stdout+=out_chunk
             if channel.recv_stderr_ready():
                 err_chunk = channel.recv_stderr(4096)
                 LOG.debug(err_chunk)
+                stderr+=err_chunk
             if channel.closed and not err_chunk and not out_chunk:
                 break
         exit_status = channel.recv_exit_status()
@@ -104,6 +121,7 @@ class SSH(object):
                 'SSHExecCommandFailed with exit_status %s'
                 % exit_status)
         self.client.close()
+        return {'stdout': stdout, 'stderr': stderr}
 
     def upload(self, source, destination):
         """Upload the specified file to the server."""

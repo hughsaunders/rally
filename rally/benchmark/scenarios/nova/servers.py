@@ -24,6 +24,7 @@ from rally.benchmark.scenarios.nova import utils
 from rally.benchmark.scenarios import utils as scenario_utils
 from rally.benchmark import utils as benchmark_utils
 from rally import exceptions as rally_exceptions
+from rally.sshutils import SSH
 from rally.openstack.common.gettextutils import _  # noqa
 from rally.openstack.common import log as logging
 
@@ -50,7 +51,7 @@ class NovaServers(utils.NovaScenario):
                                command, network='private',
                                username='ubuntu', ip_version=4, **kwargs):
         """Boot server, run a command, delete server.
-        
+
         Parameters:
         command: Command to run on the server
         network: Network to choose address to connect to instance from
@@ -65,39 +66,24 @@ class NovaServers(utils.NovaScenario):
         # NOTE(Hughsaunders): Run command specified by 'command' parameters
         # within the instance. No output is captured so only the length of
         # time taken to run is significant. Example uses: IO or CPU benchmark.
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         server_ip=[ip for ip in server.addresses[network] if
                 ip['version']==ip_version][0]['addr']
+        ssh=SSH(ip=server_ip, user=username, key=cls.clients['ssh_key_pair']['private'])
+
         for retry in range(60):
             try:
-                ssh.connect(
-                    hostname=server_ip,
-                    username=username,
-                    pkey=paramiko.RSAKey(
-                        file_obj=StringIO(cls.clients['ssh_key_pair']['private'])
-                    )
-                )
-                LOG.debug(_('Instance SSH connection succeded %s/%s Attempt:%i'
-                    % (server.id, server_ip, retry)))
-                stdin, stderr, stdout = ssh.exec_command(command)
-                stdout_str = stdout.read()
-                stderr_str = stderr.read()
-                LOG.debug(_('Instance SSH command completed %s/%s Attempt:%i'
-                    ' Stdout: %s, Stderr: %s' % (server.id, server_ip,
-                        retry, stdout_str, stderr_str)))
-                ssh.close()
+                streams = ssh.execute_command(command)
                 break
-            except socket.error as e:
+            except rally_exceptions.TimeoutException as e:
                 LOG.debug(_('Error running command on instance via SSH. %s/%s'
                     ' Attempt:%i, Error: %s' % (server.id, server_ip, retry,
                         benchmark_utils._format_exc(e))))
                 cls.sleep_between(5,5)
 
         cls._delete_server(server)
-        print("stdout:,",stdout_str)
-        return {'data':stdout_str}
+        LOG.debug('stdout: '+streams['stdout']+' stderr: '+streams['stderr'])
+        return {'data':streams['stdout'], 'errors': streams['stderr']}
 
     @classmethod
     def boot_and_bounce_server(cls, image_id, flavor_id, **kwargs):
