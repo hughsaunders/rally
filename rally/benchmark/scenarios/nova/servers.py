@@ -13,12 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
 import jsonschema
-import paramiko
 import random
-import socket
-from StringIO import StringIO
 
 from rally.benchmark.scenarios.nova import utils
 from rally.benchmark.scenarios import utils as scenario_utils
@@ -48,8 +44,9 @@ class NovaServers(utils.NovaScenario):
 
     @classmethod
     def boot_runcommand_delete_server(cls, context, image_id, flavor_id,
-                               command, network='private',
-                               username='ubuntu', ip_version=4, **kwargs):
+                                      command, network='private',
+                                      username='ubuntu', ip_version=4,
+                                      **kwargs):
         """Boot server, run a command, delete server.
 
         Parameters:
@@ -61,15 +58,16 @@ class NovaServers(utils.NovaScenario):
         server_name = cls._generate_random_name(16)
 
         server = cls._boot_server(server_name, image_id, flavor_id,
-            key_name='rally_ssh_key', **kwargs)
+                                  key_name='rally_ssh_key', **kwargs)
 
         # NOTE(Hughsaunders): Run command specified by 'command' parameters
         # within the instance. No output is captured so only the length of
         # time taken to run is significant. Example uses: IO or CPU benchmark.
 
-        server_ip=[ip for ip in server.addresses[network] if
-                ip['version']==ip_version][0]['addr']
-        ssh=SSH(ip=server_ip, user=username, key=cls.clients['ssh_key_pair']['private'])
+        server_ip = [ip for ip in server.addresses[network] if
+                     ip['version'] == ip_version][0]['addr']
+        ssh = SSH(ip=server_ip, user=username,
+                  key=cls.clients['ssh_key_pair']['private'])
 
         for retry in range(60):
             try:
@@ -77,13 +75,15 @@ class NovaServers(utils.NovaScenario):
                 break
             except rally_exceptions.TimeoutException as e:
                 LOG.debug(_('Error running command on instance via SSH. %s/%s'
-                    ' Attempt:%i, Error: %s' % (server.id, server_ip, retry,
-                        benchmark_utils._format_exc(e))))
-                cls.sleep_between(5,5)
+                            ' Attempt:%i, Error: %s' % (
+                                server.id, server_ip, retry,
+                                benchmark_utils._format_exc(e))))
+                cls.sleep_between(5, 5)
 
         cls._delete_server(server)
-        LOG.debug('stdout: '+streams['stdout']+' stderr: '+streams['stderr'])
-        return {'data':streams['stdout'], 'errors': streams['stderr']}
+        LOG.debug('stdout: ' + streams['stdout'] +
+                  ' stderr: ' + streams['stderr'])
+        return {'data': streams['stdout'], 'errors': streams['stderr']}
 
     @classmethod
     def boot_and_bounce_server(cls, image_id, flavor_id, **kwargs):

@@ -29,10 +29,12 @@ from rally.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 
+
 class SSH(object):
     """SSH common functions."""
 
-    def __init__(self, ip, user, port=22, key=None, key_string=None, timeout=1800):
+    def __init__(self, ip, user, port=22, key=None, key_string=None,
+                 timeout=1800):
         """Initialize SSH client with ip, username and the default values.
 
         timeout - the timeout for execution of the command
@@ -42,7 +44,7 @@ class SSH(object):
         self.timeout = timeout
         self.client = None
         if key_string:
-            self.key_string=key_string
+            self.key_string = key_string
         else:
             if key:
                 self.key = key
@@ -59,24 +61,23 @@ class SSH(object):
         priv_key_file.seek(0)
 
         pub_key = paramiko.RSAKey(file_obj=priv_key_file)
-        pub_key_string = "ssh-rsa %s" %(pub_key.get_base64(),)
+        pub_key_string = "ssh-rsa %s" % (pub_key.get_base64(),)
 
         return {'private': priv_key_string,
-                'public':  pub_key_string}
-
+                'public': pub_key_string}
 
     def _get_ssh_connection(self):
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        connect_params={
+        connect_params = {
             'hostname': self.ip,
             'username': self.user
         }
         if self.key_string:
-            connect_params['pkey']=paramiko.RSAKey(
+            connect_params['pkey'] = paramiko.RSAKey(
                     file_obj=StringIO(self.key_string))
         else:
-            connect_params['key_filename']=self.key
+            connect_params['key_filename'] = self.key
         self.client.connect(**connect_params)
 
     def _is_timed_out(self, start_time):
@@ -84,8 +85,8 @@ class SSH(object):
 
     def execute(self, *cmd):
         """Execute the specified command on the server."""
-        stdout=''
-        stderr=''
+        stdout = ''
+        stderr = ''
         self._get_ssh_connection()
         cmd = ' '.join(cmd)
         transport = self.client.get_transport()
@@ -108,11 +109,11 @@ class SSH(object):
             if channel.recv_ready():
                 out_chunk = channel.recv(4096)
                 LOG.debug(out_chunk)
-                stdout+=out_chunk
+                stdout += out_chunk
             if channel.recv_stderr_ready():
                 err_chunk = channel.recv_stderr(4096)
                 LOG.debug(err_chunk)
-                stderr+=err_chunk
+                stderr += err_chunk
             if channel.closed and not err_chunk and not out_chunk:
                 break
         exit_status = channel.recv_exit_status()
