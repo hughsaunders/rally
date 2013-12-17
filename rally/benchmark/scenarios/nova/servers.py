@@ -67,7 +67,7 @@ class NovaServers(utils.NovaScenario):
         server_ip = [ip for ip in server.addresses[network] if
                      ip['version'] == ip_version][0]['addr']
         ssh = SSH(ip=server_ip, user=username,
-                  key=cls.clients['ssh_key_pair']['private'])
+                  key=cls.clients('ssh_key_pair')['private'])
 
         for retry in range(60):
             try:
