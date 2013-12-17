@@ -60,10 +60,6 @@ class NovaServers(utils.NovaScenario):
         server = cls._boot_server(server_name, image_id, flavor_id,
                                   key_name='rally_ssh_key', **kwargs)
 
-        # NOTE(Hughsaunders): Run script specified by 'script' parameters
-        # within the instance. No output is captured so only the length of
-        # time taken to run is significant. Example uses: IO or CPU benchmark.
-
         server_ip = [ip for ip in server.addresses[network] if
                      ip['version'] == ip_version][0]['addr']
         ssh = SSH(ip=server_ip, user=username,

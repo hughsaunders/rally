@@ -147,8 +147,9 @@ class SSH(object):
             random.choice(string.lowercase) for i in range(16))
 
         self.upload(script, destination)
-        self.execute('%s %s' % (interpreter, destination))
+        streams = self.execute('%s %s' % (interpreter, destination))
         self.execute('rm %s' % destination)
+        return streams
 
     def wait(self, timeout=120, interval=1):
         """Wait for the host will be available via ssh."""
