@@ -182,6 +182,8 @@ class TaskCommands(object):
             ssrs = [json.loads(result['scenario_specific_results']['data']) for
                     result in raw]
 
+            pprint.pprint(ssrs)
+
             sys.stdout.flush()
             keys = set()
             for ssr in ssrs:
