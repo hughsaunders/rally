@@ -178,11 +178,8 @@ class TaskCommands(object):
 
             print("\nScenario Specific Results\n" + "-" * 80)
 
-            pprint.pprint(raw)
             ssrs = [json.loads(result['scenario_specific_results']['data']) for
                     result in raw]
-
-            pprint.pprint(ssrs)
 
             sys.stdout.flush()
             keys = set()
@@ -191,8 +188,7 @@ class TaskCommands(object):
 
             ssr_table = prettytable.PrettyTable(["Key", "max", "avg", "min"])
             for key in keys:
-                values = [float(ssr[key]) for ssr in ssrs if
-                          key in ssr]
+                values = [float(ssr[key]) for ssr in ssrs if key in ssr]
 
                 if values:
                     row = [str(key),
@@ -200,13 +196,13 @@ class TaskCommands(object):
                         sum(values) / len(values),
                         min(values)]
                 else:
-                    row = [str(key)] + ['-']*3
-
+                    row = [str(key)] + ['-'] * 3
                 ssr_table.add_row(row)
+            print(ssr_table)
 
-            for entry in result:
-                if entry['scenario_specific_results']['errors']:
-                    print(entry['scenario_specific_results']['errors'])
+            for result in raw:
+                if result['scenario_specific_results']['errors']:
+                    print(result['scenario_specific_results']['errors'])
 
 
     @cliutils.args('--task-id', type=str, dest='task_id', help='uuid of task')
