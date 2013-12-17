@@ -191,10 +191,16 @@ class TaskCommands(object):
             for key in keys:
                 values = [float(ssr['data'][key]) for ssr in ssrs if
                           key in ssr['data']]
-                ssr_table.add_row([str(key),
-                                   max(values),
-                                   sum(values) / len(values),
-                                   min(values)])
+
+                if values:
+                    row = [str(key),
+                        max(values),
+                        sum(values) / len(values),
+                        min(values)]
+                else:
+                    row = [str(key)] + ['-']*3
+
+                ssr_table.add_row(row)
 
             for entry in result:
                 if entry['scenario_specific_results']['errors']:
