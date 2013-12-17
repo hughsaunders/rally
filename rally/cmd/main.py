@@ -179,9 +179,8 @@ class TaskCommands(object):
             print("\nScenario Specific Results\n" + "-" * 80)
 
             pprint.pprint(raw)
-#            ssrs = [json.loads(result['scenario_specific_results']) for
-#                    result in raw]
-            ssrs = [result['scenario_specific_results'] for result in raw]
+            ssrs = [json.loads(result['scenario_specific_results']['data']) for
+                    result in raw]
 
             sys.stdout.flush()
             keys = set()
@@ -196,6 +195,11 @@ class TaskCommands(object):
                                    max(values),
                                    sum(values) / len(values),
                                    min(values)])
+
+            for entry in result:
+                if entry['scenario_specific_results']['errors']:
+                    print(entry['scenario_specific_results']['errors'])
+
 
     @cliutils.args('--task-id', type=str, dest='task_id', help='uuid of task')
     @cliutils.args('--pretty', type=str, help='uuid of task')
