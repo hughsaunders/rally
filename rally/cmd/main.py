@@ -183,7 +183,7 @@ class TaskCommands(object):
                     result in raw]
 
             sys.stdout.flush()
-            keys = ()
+            keys = set()
             for ssr in ssrs:
                 keys.update(ssr['data'].keys())
 
@@ -191,7 +191,7 @@ class TaskCommands(object):
             for key in keys:
                 values = [float(ssr['data'][key]) for ssr in ssrs if
                           key in ssr['data']]
-                ssr_table.add_row([key,
+                ssr_table.add_row([str(key),
                                    max(values),
                                    sum(values) / len(values),
                                    min(values)])
