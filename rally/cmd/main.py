@@ -185,7 +185,7 @@ class TaskCommands(object):
             sys.stdout.flush()
             keys = set()
             for ssr in ssrs:
-                keys.update(ssr['data'].keys())
+                keys.update(ssr.keys())
 
             ssr_table = prettytable.PrettyTable(["Key", "max", "avg", "min"])
             for key in keys:
