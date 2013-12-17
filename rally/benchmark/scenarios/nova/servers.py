@@ -43,7 +43,7 @@ class NovaServers(utils.NovaScenario):
         cls._delete_server(server)
 
     @classmethod
-    def boot_runcommand_delete_server(cls, context, image_id, flavor_id,
+    def boot_runcommand_delete_server(cls, image_id, flavor_id,
                                       script, interpreter, network='private',
                                       username='ubuntu', ip_version=4,
                                       **kwargs):

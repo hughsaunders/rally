@@ -133,13 +133,13 @@ class SSH(object):
         ftp.put(os.path.expanduser(source), destination)
         ftp.close()
 
-    def execute_script(self, script, enterpreter='/bin/sh'):
+    def execute_script(self, script, interpreter='/bin/sh'):
         """Execute the specified local script on the remote server."""
         destination = '/tmp/' + ''.join(
             random.choice(string.lowercase) for i in range(16))
 
         self.upload(script, destination)
-        self.execute('%s %s' % (enterpreter, destination))
+        self.execute('%s %s' % (interpreter, destination))
         self.execute('rm %s' % destination)
 
     def wait(self, timeout=120, interval=1):
