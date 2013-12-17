@@ -179,8 +179,9 @@ class TaskCommands(object):
             print("\nScenario Specific Results\n" + "-" * 80)
 
             pprint.pprint(raw)
-            ssrs = [json.loads(result['scenario_specific_results']) for
-                    result in raw]
+#            ssrs = [json.loads(result['scenario_specific_results']) for
+#                    result in raw]
+            ssrs = [result['scenario_specific_results'] for result in raw]
 
             sys.stdout.flush()
             keys = set()
