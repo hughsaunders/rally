@@ -84,7 +84,7 @@ class SSH(object):
             connect_params['key_filename'] = self.key
         else:
             connect_params['pkey'] = paramiko.RSAKey(
-                    file_obj=StringIO(self.key_string))
+                    file_obj=StringIO(self.key))
 
         self.client.connect(**connect_params)
 
