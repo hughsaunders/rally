@@ -189,8 +189,8 @@ class TaskCommands(object):
 
             ssr_table = prettytable.PrettyTable(["Key", "max", "avg", "min"])
             for key in keys:
-                values = [float(ssr['data'][key]) for ssr in ssrs if
-                          key in ssr['data']]
+                values = [float(ssr[key]) for ssr in ssrs if
+                          key in ssr]
 
                 if values:
                     row = [str(key),
