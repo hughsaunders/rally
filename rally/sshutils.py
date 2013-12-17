@@ -33,23 +33,27 @@ LOG = logging.getLogger(__name__)
 class SSH(object):
     """SSH common functions."""
 
-    def __init__(self, ip, user, port=22, key=None, key_string=None,
+    def __init__(self, ip, user, port=22, key=None, key_type="file",
                  timeout=1800):
         """Initialize SSH client with ip, username and the default values.
 
         timeout - the timeout for execution of the command
+        key - path to private key file, or string containing actual key
+        key_type - "file" for key path, "string" for actual key
         """
         self.ip = ip
         self.user = user
         self.timeout = timeout
         self.client = None
-        if key_string:
-            self.key_string = key_string
-        else:
-            if key:
-                self.key = key
-            else:
-                self.key = os.path.expanduser('~/.ssh/id_rsa')
+        self.key = key
+        self.key_type = key_type
+        if not self.key:
+            #Guess location of user's private key if no key is specified.
+            self.key = os.path.expanduser('~/.ssh/id_rsa')
+            if not os.path.exists(self.key):
+                raise exceptions.SSHError(
+                    "No SSH key specified, guessed %s, but didn't find a"
+                    " key there." % self.key)
 
     @classmethod
     def generate_ssh_keypair(cls, key_size=2048):
@@ -73,11 +77,15 @@ class SSH(object):
             'hostname': self.ip,
             'username': self.user
         }
-        if self.key_string:
+
+        # NOTE(hughsaunders): Set correct paramiko parameter names for each
+        # method of supplying a key.
+        if self.key_type == 'file':
+            connect_params['key_filename'] = self.key
+        else:
             connect_params['pkey'] = paramiko.RSAKey(
                     file_obj=StringIO(self.key_string))
-        else:
-            connect_params['key_filename'] = self.key
+
         self.client.connect(**connect_params)
 
     def _is_timed_out(self, start_time):
