@@ -76,7 +76,7 @@ class NovaServers(utils.NovaScenario):
                                              interpreter=interpreter)
                 break
             except (rally_exceptions.SSHError,
-                    rally_exceptions.TimeoutException) as e:
+                    rally_exceptions.TimeoutException, IOError) as e:
                 LOG.debug(_('Error running script on instance via SSH. %s/%s'
                             ' Attempt:%i, Error: %s' % (
                                 server.id, server_ip, retry,
