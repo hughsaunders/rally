@@ -75,7 +75,8 @@ class NovaServers(utils.NovaScenario):
                 streams = ssh.execute_script(script=script,
                                              interpreter=interpreter)
                 break
-            except rally_exceptions.TimeoutException as e:
+            except (rally_exceptions.SSHError,
+                    rally_exceptions.TimeoutException) as e:
                 LOG.debug(_('Error running script on instance via SSH. %s/%s'
                             ' Attempt:%i, Error: %s' % (
                                 server.id, server_ip, retry,
