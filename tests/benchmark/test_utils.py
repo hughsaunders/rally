@@ -93,7 +93,8 @@ class ScenarioTestCase(test.TestCase):
             endpoints = runner._create_temp_tenants_and_users(tenants,
                                                               users_per_tenant)
             self.assertEqual(len(endpoints), tenants * users_per_tenant)
-            endpoint_keys = set(["username", "password", "tenant_name", "uri"])
+            endpoint_keys = set(["username", "password", "tenant_name",
+                                 "uri", "ssh_key_pair"])
             for endpoint in endpoints:
                 self.assertEqual(set(endpoint.keys()), endpoint_keys)
 
@@ -113,7 +114,8 @@ class ScenarioTestCase(test.TestCase):
                                                {"times": times,
                                                 "active_users": active_users,
                                                 "timeout": 2})
-                expected = [{"time": 10, "idle_time": 0, "error": None}
+                expected = [{"time": 10, "idle_time": 0, "error": None,
+                             "scenario_specific_results": None}
                             for i in range(times)]
                 self.assertEqual(results, expected)
 
@@ -122,14 +124,22 @@ class ScenarioTestCase(test.TestCase):
                                                {"duration": duration,
                                                 "active_users": active_users,
                                                 "timeout": 2})
-                expected = [{"time": 10, "idle_time": 0, "error": None}
+                expected = [{"time": 10, "idle_time": 0, "error": None,
+                             "scenario_specific_results": None}
                             for i in range(active_users)]
                 self.assertEqual(results, expected)
 
     @mock.patch("rally.benchmark.utils.osclients")
     @mock.patch("multiprocessing.pool.IMapIterator.next")
     @mock.patch("rally.benchmark.utils.time.time")
-    def test_run_scenario_timeout(self, mock_time, mock_next, mock_osclients):
+    def test_run_scenario_timeout(self, mock_time, mock_next,
+                                  mock_osclients):
+
+        # NOTE(hughsaunders): skip ssh key generation via paramiko.
+        # this method is manually un-patched at the end of this test case
+        _prepare_for_instance_ssh = utils._prepare_for_instance_ssh
+        utils._prepare_for_instance_ssh = lambda x: x
+
         mock_time.side_effect = [1, 2, 3, 10]
         mock_next.side_effect = multiprocessing.TimeoutError()
         mock_osclients.Clients.return_value = test_utils.FakeClients()
@@ -159,6 +169,7 @@ class ScenarioTestCase(test.TestCase):
             self.assertEqual(r['time'], 0.01)
             self.assertEqual(r['error'][0],
                              str(multiprocessing.TimeoutError))
+        utils._prepare_for_instance_ssh = _prepare_for_instance_ssh
 
     def test_run_scenario_exception_inside_test(self):
         with mock.patch("rally.benchmark.utils.osclients") as mock_osclients:

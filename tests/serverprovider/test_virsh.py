@@ -15,6 +15,7 @@
 
 import mock
 import netaddr
+import os
 
 from rally.openstack.common.fixture import mockpatch
 from rally.openstack.common import test
@@ -38,6 +39,8 @@ class VirshProviderTestCase(test.BaseTestCase):
     @mock.patch('rally.serverprovider.providers.virsh.netaddr.IPAddress')
     @mock.patch('rally.serverprovider.providers.virsh.subprocess')
     def test_create_vm(self, mock_subp, mock_ipaddress):
+        script_path = (os.path.dirname(virsh.__file__)
+                       + '/virsh/get_domain_ip.sh')
         mock_subp.check_output.return_value = '10.0.0.1'
         mock_ipaddress.return_value = '10.0.0.2'
         server = self.provider.create_vm('name')
@@ -47,9 +50,9 @@ class VirshProviderTestCase(test.BaseTestCase):
                                  shell=True),
             mock.call.check_call('virsh --connect=qemu+ssh://user@host/system '
                                  'start name', shell=True),
-            mock.call.check_call('scp -o StrictHostKeyChecking=no  rally/serve'
-                                 'rprovider/providers/virsh/get_domain_ip.sh u'
-                                 'ser@host:~/get_domain_ip.sh', shell=True),
+            mock.call.check_call('scp -o StrictHostKeyChecking=no  %s u'
+                                 'ser@host:~/get_domain_ip.sh' % script_path,
+                                 shell=True),
             mock.call.check_output('ssh -o StrictHostKeyChecking=no user@host '
                                    './get_domain_ip.sh name', shell=True),
         ])

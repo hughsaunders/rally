@@ -20,9 +20,9 @@ from rally.benchmark.scenarios.nova import utils
 from rally.benchmark.scenarios import utils as scenario_utils
 from rally.benchmark import utils as benchmark_utils
 from rally import exceptions as rally_exceptions
-from rally.sshutils import SSH
 from rally.openstack.common.gettextutils import _  # noqa
 from rally.openstack.common import log as logging
+from rally.sshutils import SSH
 
 LOG = logging.getLogger(__name__)
 
@@ -74,9 +74,9 @@ class NovaServers(utils.NovaScenario):
             except (rally_exceptions.SSHError,
                     rally_exceptions.TimeoutException, IOError) as e:
                 LOG.debug(_('Error running script on instance via SSH. %s/%s'
-                            ' Attempt:%i, Error: %s' % (
+                            ' Attempt:%i, Error: %s') % (
                                 server.id, server_ip, retry,
-                                benchmark_utils._format_exc(e))))
+                                benchmark_utils._format_exc(e)))
                 cls.sleep_between(5, 5)
 
         cls._delete_server(server)

@@ -20,8 +20,8 @@ import random
 import select
 import socket
 import string
-import time
 from StringIO import StringIO
+import time
 
 from rally import exceptions
 from rally.openstack.common.gettextutils import _  # noqa
@@ -117,11 +117,11 @@ class SSH(object):
             if channel.recv_ready():
                 out_chunk = channel.recv(4096)
                 LOG.debug(out_chunk)
-                stdout += out_chunk
+                stdout += str(out_chunk)
             if channel.recv_stderr_ready():
                 err_chunk = channel.recv_stderr(4096)
                 LOG.debug(err_chunk)
-                stderr += err_chunk
+                stderr += str(err_chunk)
             if channel.closed and not err_chunk and not out_chunk:
                 break
         exit_status = channel.recv_exit_status()

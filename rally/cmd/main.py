@@ -192,9 +192,9 @@ class TaskCommands(object):
 
                 if values:
                     row = [str(key),
-                        max(values),
-                        sum(values) / len(values),
-                        min(values)]
+                           max(values),
+                           sum(values) / len(values),
+                           min(values)]
                 else:
                     row = [str(key)] + ['-'] * 3
                 ssr_table.add_row(row)
@@ -203,7 +203,6 @@ class TaskCommands(object):
             for result in raw:
                 if result['scenario_specific_results']['errors']:
                     print(result['scenario_specific_results']['errors'])
-
 
     @cliutils.args('--task-id', type=str, dest='task_id', help='uuid of task')
     @cliutils.args('--pretty', type=str, help='uuid of task')

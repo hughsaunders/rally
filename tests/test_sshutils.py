@@ -63,7 +63,7 @@ class SSHTestCase(test.TestCase):
         self.ssh.upload('/tmp/s', '/tmp/d')
 
         expected = [mock.call.set_missing_host_key_policy(self.policy),
-                    mock.call.connect('example.net', username='root',
+                    mock.call.connect(hostname='example.net', username='root',
                                       key_filename=os.path.expanduser(
                                           '~/.ssh/id_rsa')),
                     mock.call.open_sftp(),
