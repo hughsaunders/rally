@@ -13,12 +13,19 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
 import jsonschema
 import random
 
 from rally.benchmark.scenarios.nova import utils
 from rally.benchmark.scenarios import utils as scenario_utils
+from rally.benchmark import utils as benchmark_utils
 from rally import exceptions as rally_exceptions
+from rally.openstack.common.gettextutils import _  # noqa
+from rally.openstack.common import log as logging
+from rally import sshutils
+
+LOG = logging.getLogger(__name__)
 
 ACTION_BUILDER = scenario_utils.ActionBuilder(
         ['hard_reboot', 'soft_reboot', 'stop_start', 'rescue_unrescue'])
@@ -35,6 +42,84 @@ class NovaServers(utils.NovaScenario):
         server = cls._boot_server(server_name, image_id, flavor_id, **kwargs)
         cls.sleep_between(min_sleep, max_sleep)
         cls._delete_server(server)
+
+    @classmethod
+    def boot_runcommand_delete_server(cls, image_id, flavor_id,
+                                      script, interpreter, network='private',
+                                      username='ubuntu', ip_version=4,
+                                      retries=60, port=22, **kwargs):
+        """Boot server, run a script that outputs JSON, delete server.
+
+        Parameters:
+        script: script to run on the server, must output JSON mapping metric
+                names to values. See sample script below.
+        network: Network to choose address to connect to instance from
+        username: User to SSH to instance as
+        ip_version: Version of ip protocol to use for connection
+
+        returns: Dictionary containing two keys, data and errors. Data is JSON
+                 data output by the script. Errors is raw data from the
+                 script's standard error stream.
+
+
+        Example Script:
+        #!/bin/bash
+        time_seconds(){ (time -p $1 ) 2>&1 |awk '/real/{print $2}'; }
+        file=/tmp/test.img
+        c=1000 #1GB
+        write_seq_1gb=$(time_seconds "dd if=/dev/zero of=$file bs=1M count=$c")
+        read_seq_1gb=$(time_seconds "dd if=$file of=/dev/null bs=1M")
+        [[ -f $file ]] && rm $file
+
+        echo "{
+            \"write_seq_1gb\": $write_seq_1gb,
+            \"read_seq_1gb\": $read_seq_1gb
+            }"
+        """
+        server_name = cls._generate_random_name(16)
+
+        server = cls._boot_server(server_name, image_id, flavor_id,
+                                  key_name='rally_ssh_key', **kwargs)
+
+        server_ip = [ip for ip in server.addresses[network] if
+                     ip['version'] == ip_version][0]['addr']
+        ssh = sshutils.SSH(ip=server_ip, port=port, user=username,
+                           key=cls.clients('ssh_key_pair')['private'],
+                           key_type='string')
+
+        for retry in range(retries):
+            try:
+                LOG.debug(_('Execute script on server attempt '
+                            '%(retry)i/%(retries)i') % dict(retry=retry,
+                                                            retries=retries))
+                streams = list(ssh.execute_script(script=script,
+                                                  interpreter=interpreter,
+                                                  get_stdout=True,
+                                                  get_stderr=True))
+
+                #NOTE(hughsaunders): Decode JSON script output
+                streams[sshutils.SSH.STDOUT_INDEX]\
+                    = json.loads(streams[sshutils.SSH.STDOUT_INDEX])
+                break
+            except (rally_exceptions.SSHError,
+                    rally_exceptions.TimeoutException, IOError) as e:
+                LOG.debug(_('Error running script on instance via SSH. '
+                            '%(id)s/%(ip)s Attempt:%(retry)i, '
+                            'Error: %(error)s') % dict(
+                                id=server.id, ip=server_ip, retry=retry,
+                                error=benchmark_utils.format_exc(e)))
+                cls.sleep_between(5, 5)
+            except ValueError:
+                LOG.error(_('Script %(script)s did not output valid JSON. ')
+                          % dict(script=script))
+
+        cls._delete_server(server)
+        LOG.debug(_('Output streams from in-instance script execution: '
+                    'stdout: %(stdout)s, stderr: $(stderr)s') % dict(
+                        stdout=str(streams[sshutils.SSH.STDOUT_INDEX]),
+                        stderr=str(streams[sshutils.SSH.STDERR_INDEX])))
+        return dict(data=streams[sshutils.SSH.STDOUT_INDEX],
+                    errors=streams[sshutils.SSH.STDERR_INDEX])
 
     @classmethod
     def boot_and_bounce_server(cls, image_id, flavor_id, **kwargs):
